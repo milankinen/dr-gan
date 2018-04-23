@@ -1,0 +1,8 @@
+.DS_Store
+*.iml
+.idea
+.data
+.outputs
+*.pyc
+run.sh
+stop.sh
