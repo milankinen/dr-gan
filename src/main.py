@@ -6,7 +6,7 @@ from data.msceleb import load_training_data
 from data.sample import load_gen_samples
 from data.lfw import load_validation_dataset
 from ops import float_tensor, long_tensor, one_hot
-import argparse, json, misc, signal, os
+import argparse, json, misc, signal, os, math
 import torch, numpy as np
 import torchvision.utils as vutils
 
@@ -26,8 +26,9 @@ def _main():
   parser.add_argument("--learning_rate", type=float, default=.0002)
   parser.add_argument("--train_ratio", type=int, default=2)
   parser.add_argument("--d_precision_threshold", type=float, default=.85)
-  parser.add_argument("--val_period", type=int, default=10000)
-  parser.add_argument("--gen_images_period", type=int, default=5000)
+  parser.add_argument("--val_period", type=int, default=5000)
+  parser.add_argument("--gen_images_period", type=int, default=2500)
+  parser.add_argument("--model_switch_period", type=int, default=25000)
   parser.add_argument("--save_period", type=int, default=50000)
   parser.add_argument("--gpu", action="store_true", default=False)
   args = parser.parse_args()

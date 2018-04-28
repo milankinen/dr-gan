@@ -5,8 +5,7 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from ops import float_tensor, long_tensor, one_hot, ones, zeros, init
 import scipy.spatial.distance as distance
-import models
-import numpy as np
+import models, numpy as np, toolz.curried as tz
 
 _exit = False
 
@@ -38,6 +37,15 @@ def train_gan(args, train_data, val_dataset, callbacks):
 
   def _interpolate(x1, x2, c, z):
     return G.dec((G.enc(x1)[0] + G.enc(x2)[0]) / 2., c, z)
+
+  def _switch_models():
+    # Model switching (section 3.4)
+    print "Switching model params..."
+    g_params = tz.keymap(lambda n: ".".join(n.split(".")[1:]), dict(G.enc.named_parameters()))
+    d_params = tz.keymap(lambda n: ".".join(n.split(".")[1:]), dict(D.named_parameters()))
+    for name, param in g_params.iteritems():
+      d_params[name].data.copy_(param.data)
+    print "Model params switched!"
 
   def _train_g(step, tensors):
     # Define training vars
@@ -133,6 +141,8 @@ def train_gan(args, train_data, val_dataset, callbacks):
         _train_g(step, _batch_data(batch))
       if val_dataset is not None and step % args.val_period == 0:
         _validate(step)
-      if _exit: return
+      if args.model_switch_period > 0 and step % args.model_switch_period == 0:
+        _switch_models()
+      if _exit: return G, D
     callbacks.on_epoch_end(epoch, G, D)
   return G, D
