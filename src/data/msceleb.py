@@ -55,9 +55,16 @@ def load_training_data(tsv_path, args, limit=None):
     img = np.array(img) / 127.5 - 1.  # normalize
     return np.transpose(img, (2, 0, 1))  # -> C, W, H
 
+  def _get_random_image():
+    images = meta["persons"][random.randint(0, meta["num_id_classes"] - 1)]["images"]
+    return images[0 if len(images) == 1 else random.randint(0, len(images) - 1)]
+
   def _make_samples(meta, shuffle):
     def _to_sample(person, images):
-      return m(id=person["id_class"] - 1, images=freeze(list(images)))
+      # Random images needed for representation interpolation (3.5)
+      x1 = _get_random_image()
+      x2 = _get_random_image()
+      return m(id=person["id_class"] - 1, images=freeze(list(images)), x1=freeze(x1), x2=freeze(x2))
     samples = pipe(
       meta["persons"],
       tz.take(limit) if limit is not None else tz.identity,
@@ -79,7 +86,9 @@ def load_training_data(tsv_path, args, limit=None):
       s = self.samples[idx]
       images = np.array([_load_image(i) for i in s.images])
       poses = np.array([_pose_class(i.yaw) for i in s.images])
-      return [images, s.id, poses]
+      x1 = _load_image(s.x1)
+      x2 = _load_image(s.x2)
+      return [images, s.id, poses, x1, x2]
   class MSCelebTrainData(object):
     @property
     def Nd(self):

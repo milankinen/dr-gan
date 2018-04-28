@@ -27,6 +27,8 @@ def train_gan(args, train_data, val_dataset, callbacks):
     images = float_tensor(batch[0].float())
     bsize = len(images)
     return m(images=images,
+             x1=float_tensor(batch[3].float()),
+             x2=float_tensor(batch[4].float()),
              id_labels=init(batch[1]),
              pose_labels=init(batch[2]),
              fake_pose_labels=long_tensor(np.random.randint(args.Np, size=bsize)),
@@ -34,9 +36,14 @@ def train_gan(args, train_data, val_dataset, callbacks):
              zeros=zeros(bsize),
              noise=float_tensor(np.random.uniform(-1., 1., (bsize, args.Nz))))
 
+  def _interpolate(x1, x2, c, z):
+    return G.dec((G.enc(x1)[0] + G.enc(x2)[0]) / 2., c, z)
+
   def _train_g(step, tensors):
     # Define training vars
     images = Variable(tensors.images)
+    x1 = Variable(tensors.x1).unsqueeze(dim=0)
+    x2 = Variable(tensors.x2).unsqueeze(dim=0)
     fake_pose_one_hot = Variable(one_hot(tensors.fake_pose_labels, args.Np))
     fake_pose_labels = Variable(tensors.fake_pose_labels)
     noise = Variable(tensors.noise)
@@ -45,10 +52,12 @@ def train_gan(args, train_data, val_dataset, callbacks):
 
     # Run models and get losses
     image_fused = G(images, fake_pose_one_hot, noise).x
+    image_interpolated = _interpolate(x1, x2, fake_pose_one_hot, noise)  # Representation Interpolation (3.5)
     logits_fused = D(image_fused)
-    L_gan = bce(logits_fused.gan, one_labels)
+    logits_interpolated = D(image_interpolated)
+    L_gan = bce(logits_fused.gan, one_labels) + bce(logits_interpolated.gan, one_labels)
     L_id = sce(logits_fused.id, id_labels)
-    L_pose = sce(logits_fused.pose, fake_pose_labels)
+    L_pose = sce(logits_fused.pose, fake_pose_labels) + sce(logits_interpolated.pose, fake_pose_labels)
     loss = L_id + L_pose + L_gan
 
     # Update models
@@ -64,6 +73,8 @@ def train_gan(args, train_data, val_dataset, callbacks):
   def _train_d(step, tensors):
     # Define training vars
     images = Variable(tensors.images)
+    x1 = Variable(tensors.x1).unsqueeze(dim=0)
+    x2 = Variable(tensors.x2).unsqueeze(dim=0)
     fake_pose_one_hot = Variable(one_hot(tensors.fake_pose_labels, args.Np))
     noise = Variable(tensors.noise)
     one_labels = Variable(tensors.ones)
@@ -75,7 +86,8 @@ def train_gan(args, train_data, val_dataset, callbacks):
     # Run models and get losses
     logits_real = D(images[:, 0])
     logits_fake = D(G(images, fake_pose_one_hot, noise).x.detach())
-    L_gan_fake = bce(logits_fake.gan, zero_labels)
+    logits_interpolated = D(_interpolate(x1, x2, fake_pose_one_hot, noise))  # Representation Interpolation (3.5)
+    L_gan_fake = bce(logits_fake.gan, zero_labels) + bce(logits_interpolated.gan, zero_labels)
     L_gan = bce(logits_real.gan, one_labels)
     L_id = sce(logits_real.id, id_labels)
     L_pose = sce(logits_real.pose, pose_labels[:, 0])
