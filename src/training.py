@@ -101,16 +101,23 @@ def train_gan(args, train_data, val_dataset, callbacks):
     L_pose = sce(logits_real.pose, pose_labels[:, 0])
     loss = L_id + L_pose + L_gan + L_gan_fake
 
+    n_correct = (logits_real.gan.sigmoid() > .5).sum() + (logits_fake.gan.sigmoid() < .5).sum() \
+                + (logits_interpolated.gan.sigmoid() < .5).sum()
+    n_total = logits_real.gan.size()[0] + logits_fake.gan.size()[0] + logits_interpolated.gan.size()[0]
+    d_precision = n_correct.float() / n_total
+
     # Update models
     loss.backward()
     d_optim.step()
     callbacks.on_step_end(step, G, D, {
+      "d_precision": d_precision,
       "d_loss_total": loss,
       "d_loss_gan": L_gan,
       "d_loss_gan_fake": L_gan_fake,
       "d_loss_id": L_id,
       "d_loss_pose": L_pose
     })
+    return float(d_precision.data[0]) > args.d_precision_threshold
 
   def _validate(step):
     def _val(ds):
@@ -126,7 +133,7 @@ def train_gan(args, train_data, val_dataset, callbacks):
     acc = np.mean([1. - d for d in dist_same] + dist_not_same)
     callbacks.on_val_end(step, acc)
 
-  step = 0
+  step, d_overpower = 0, False
   for epoch in xrange(1, args.epochs + 1):
     epoch_data = DataLoader(train_data.get_ds(shuffle=True), batch_size=args.batch_size, shuffle=False, num_workers=1)
     for batch in epoch_data:
@@ -135,8 +142,8 @@ def train_gan(args, train_data, val_dataset, callbacks):
       G.train()
       D.zero_grad()
       G.zero_grad()
-      if step % args.train_ratio == 0:
-        _train_d(step, _batch_data(batch))
+      if step % (args.train_ratio * (2 if d_overpower else 1)) == 0:
+        d_overpower = _train_d(step, _batch_data(batch))
       else:
         _train_g(step, _batch_data(batch))
       if val_dataset is not None and step % args.val_period == 0:

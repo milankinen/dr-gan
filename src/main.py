@@ -68,9 +68,9 @@ def _main():
     torch.save(D.state_dict(), os.path.join(weight_path, "%s.d.pt" % str(step)))
     print "Model weights saved!"
 
-  def on_step_end(step, G, D, losses):
-    for n in losses:
-      writer.add_scalar(n, losses[n], step)
+  def on_step_end(step, G, D, vals):
+    for n in vals:
+      writer.add_scalar(n, vals[n], step)
     if step % args.gen_images_period == 0:
       _gen_sample_images(step, G)
     if args.outdir:
