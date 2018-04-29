@@ -94,7 +94,7 @@ def train_gan(args, train_data, val_dataset, callbacks):
     # Run models and get losses
     logits_real = D(images[:, 0])
     logits_fake = D(G(images, fake_pose_one_hot, noise).x.detach())
-    logits_interpolated = D(_interpolate(x1, x2, fake_pose_one_hot, noise))  # Representation Interpolation (3.5)
+    logits_interpolated = D(_interpolate(x1, x2, fake_pose_one_hot, noise).detach())  # Representation Interpolation
     L_gan_fake = bce(logits_fake.gan, zero_labels) + bce(logits_interpolated.gan, zero_labels)
     L_gan = bce(logits_real.gan, one_labels)
     L_id = sce(logits_real.id, id_labels)
