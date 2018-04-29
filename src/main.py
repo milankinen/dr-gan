@@ -64,6 +64,13 @@ def _main():
       vutils.save_image(gen, img_path, normalize=True)
     print "Sample images generated!"
 
+  def _prune_old(pattern):
+    cp_path = os.path.join(args.outdir, "checkpoints")
+    all_checkpoints = sorted(glob.glob(os.path.join(cp_path, pattern)))
+    for i in range(len(all_checkpoints) - args.save_retention):
+      os.remove(all_checkpoints[i])
+      print "Removed old checkpoint file %s" % all_checkpoints[i]
+
   def _save_weights(step, G, D, optimizers):
     cp_path = os.path.join(args.outdir, "checkpoints")
     print "Saving checkpoint..."
@@ -77,10 +84,6 @@ def _main():
     save_path = os.path.join(cp_path, "%s.pt" % str(step))
     torch.save(checkpoint, save_path)
     print "Checkpoint saved to %s" % save_path
-    all_checkpoints = sorted(glob.glob(os.path.join(cp_path, "*.pt")))
-    for i in range(len(all_checkpoints) - args.save_retention):
-      os.remove(all_checkpoints[i])
-      print "Removed old checkpoint file %s" % all_checkpoints[i]
 
   def on_train_begin(G, D, optimizers):
     if args.checkpoint:
@@ -95,7 +98,6 @@ def _main():
         d_weights = torch.load(args.D_weights)
         D.load_state_dict(d_weights)
         print "Loaded D initial weights from %s" % args.D_weights
-
       if args.G_weights:
         g_weights = torch.load(args.G_weights)
         G.load_state_dict(g_weights)
@@ -108,7 +110,8 @@ def _main():
       _gen_sample_images(step, G)
     if args.outdir:
       if step % args.save_period == 0:
-        _save_weights("%07d" % step, G, D, optimizers)
+        _save_weights("step.%07d" % step, G, D, optimizers)
+        _prune_old("step.*")
       elif step % 1000 == 0:
         _save_weights("latest", G, D, optimizers)
 
