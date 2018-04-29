@@ -132,7 +132,7 @@ def train_gan(args, train_data, val_dataset, callbacks):
     dist_same = _val(val_dataset[0])
     dist_not_same = _val(val_dataset[1])
     acc = np.mean([1. - d for d in dist_same] + dist_not_same)
-    callbacks.on_val_end(step, acc)
+    callbacks.on_val_end(step, acc, G, D, optimizers)
 
   callbacks.on_train_begin(G, D, optimizers)
   step, d_overpower = 0, False

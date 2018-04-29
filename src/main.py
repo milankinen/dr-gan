@@ -6,7 +6,7 @@ from data.msceleb import load_training_data
 from data.sample import load_gen_samples
 from data.lfw import load_validation_dataset
 from ops import float_tensor, long_tensor, one_hot
-import argparse, json, misc, signal, os, math, glob
+import argparse, json, misc, signal, os, glob
 import torch, numpy as np
 import torchvision.utils as vutils
 
@@ -45,6 +45,7 @@ def _main():
   args.Nd = train_data.Nd
   signal.signal(signal.SIGINT, sigint_handler)
   writer = SummaryWriter(log_dir=args.logdir)
+  best_accuracy = [float("inf")]
 
   print "Num IDs: %d" % args.Nd
 
@@ -118,8 +119,11 @@ def _main():
   def on_epoch_end(epoch, G, D, optimizers):
     print "Epoch ended: %d" % epoch
 
-  def on_val_end(step, accuracy):
+  def on_val_end(step, accuracy, G, D, optimizers):
     writer.add_scalar("val_accuracy", accuracy, step)
+    if accuracy < best_accuracy[0]:
+      best_accuracy[0] = accuracy
+      _save_weights("best", G, D, optimizers)
 
   with misc.gpu_flag(args.gpu):
     callbacks = m(on_step_end=on_step_end,
