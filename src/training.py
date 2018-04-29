@@ -19,6 +19,7 @@ def train_gan(args, train_data, val_dataset, callbacks):
   D = models.Discriminator(args)
   g_optim = optim.Adam(G.parameters(), lr=args.learning_rate, betas=(.5, .999))
   d_optim = optim.Adam(D.parameters(), lr=args.learning_rate, betas=(.5, .999))
+  optimizers = m(g=g_optim, d=d_optim)
   bce = nn.BCEWithLogitsLoss()
   sce = nn.CrossEntropyLoss()
 
@@ -71,7 +72,7 @@ def train_gan(args, train_data, val_dataset, callbacks):
     # Update models
     loss.backward()
     g_optim.step()
-    callbacks.on_step_end(step, G, D, {
+    callbacks.on_step_end(step, G, D, optimizers, {
       "g_loss_total": loss,
       "g_loss_gan": L_gan,
       "g_loss_id": L_id,
@@ -109,7 +110,7 @@ def train_gan(args, train_data, val_dataset, callbacks):
     # Update models
     loss.backward()
     d_optim.step()
-    callbacks.on_step_end(step, G, D, {
+    callbacks.on_step_end(step, G, D, optimizers, {
       "d_precision": d_precision,
       "d_loss_total": loss,
       "d_loss_gan": L_gan,
@@ -133,10 +134,10 @@ def train_gan(args, train_data, val_dataset, callbacks):
     acc = np.mean([1. - d for d in dist_same] + dist_not_same)
     callbacks.on_val_end(step, acc)
 
-  callbacks.on_train_begin(G, D)
+  callbacks.on_train_begin(G, D, optimizers)
   step, d_overpower = 0, False
   for epoch in xrange(1, args.epochs + 1):
-    epoch_data = DataLoader(train_data.get_ds(shuffle=True), batch_size=args.batch_size, shuffle=False, num_workers=1)
+    epoch_data = DataLoader(train_data.get_ds(shuffle=True), batch_size=args.batch_size, shuffle=False, num_workers=4)
     for batch in epoch_data:
       step += 1
       D.train()
@@ -151,6 +152,6 @@ def train_gan(args, train_data, val_dataset, callbacks):
         _validate(step)
       if args.model_switch_period > 0 and step % args.model_switch_period == 0:
         _switch_models()
-      if _exit: return G, D
-    callbacks.on_epoch_end(epoch, G, D)
-  return G, D
+      if _exit: return G, D, optimizers
+    callbacks.on_epoch_end(epoch, G, D, optimizers)
+  return G, D, optimizers

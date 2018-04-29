@@ -6,7 +6,7 @@ from data.msceleb import load_training_data
 from data.sample import load_gen_samples
 from data.lfw import load_validation_dataset
 from ops import float_tensor, long_tensor, one_hot
-import argparse, json, misc, signal, os, math
+import argparse, json, misc, signal, os, math, glob
 import torch, numpy as np
 import torchvision.utils as vutils
 
@@ -28,8 +28,10 @@ def _main():
   parser.add_argument("--d_precision_threshold", type=float, default=.85)
   parser.add_argument("--val_period", type=int, default=5000)
   parser.add_argument("--gen_images_period", type=int, default=2500)
-  parser.add_argument("--save_period", type=int, default=50000)
   parser.add_argument("--model_switch_period", type=int, default=0)
+  parser.add_argument("--save_period", type=int, default=10000)
+  parser.add_argument("--save_retention", type=int, default=5)
+  parser.add_argument("--checkpoint")
   parser.add_argument("--D_weights")
   parser.add_argument("--G_weights")
   parser.add_argument("--gpu", action="store_true", default=False)
@@ -62,36 +64,55 @@ def _main():
       vutils.save_image(gen, img_path, normalize=True)
     print "Sample images generated!"
 
-  def _save_weights(step, G, D):
-    weight_path = os.path.join(args.outdir, "weights")
-    print "Saving model weights..."
-    misc.mkdir_p(weight_path)
-    torch.save(G.state_dict(), os.path.join(weight_path, "%s.g.pt" % str(step)))
-    torch.save(D.state_dict(), os.path.join(weight_path, "%s.d.pt" % str(step)))
-    print "Model weights saved!"
+  def _save_weights(step, G, D, optimizers):
+    cp_path = os.path.join(args.outdir, "checkpoints")
+    print "Saving checkpoint..."
+    checkpoint = {
+      "g_weights": G.state_dict(),
+      "d_weights": D.state_dict(),
+      "g_optim": optimizers.g.state_dict(),
+      "d_optim": optimizers.d.state_dict()
+    }
+    misc.mkdir_p(cp_path)
+    save_path = os.path.join(cp_path, "%s.pt" % str(step))
+    torch.save(checkpoint, save_path)
+    print "Checkpoint saved to %s" % save_path
+    all_checkpoints = sorted(glob.glob(os.path.join(cp_path, "*.pt")))
+    for i in range(len(all_checkpoints) - args.save_retention):
+      os.remove(all_checkpoints[i])
+      print "Removed old checkpoint file %s" % all_checkpoints[i]
 
-  def on_train_begin(G, D):
-    if args.D_weights:
-      d_weights = torch.load(args.D_weights)
-      D.load_state_dict(d_weights)
-      print "Loaded D initial weights from %s" % args.D_weights
-    if args.G_weights:
-      g_weights = torch.load(args.G_weights)
-      G.load_state_dict(g_weights)
-      print "Loaded G initial weights from %s" % args.G_weights
+  def on_train_begin(G, D, optimizers):
+    if args.checkpoint:
+      checkpoint = torch.load(args.checkpoint)
+      G.load_state_dict(checkpoint["g_weights"])
+      D.load_state_dict(checkpoint["d_weights"])
+      optimizers.g.load_state_dict(checkpoint["g_optim"])
+      optimizers.d.load_state_dict(checkpoint["d_optim"])
+      print "Loaded model state from checkpoint %s" % args.checkpoint
+    else:
+      if args.D_weights:
+        d_weights = torch.load(args.D_weights)
+        D.load_state_dict(d_weights)
+        print "Loaded D initial weights from %s" % args.D_weights
 
-  def on_step_end(step, G, D, vals):
+      if args.G_weights:
+        g_weights = torch.load(args.G_weights)
+        G.load_state_dict(g_weights)
+        print "Loaded G initial weights from %s" % args.G_weights
+
+  def on_step_end(step, G, D, optimizers, vals):
     for n in vals:
       writer.add_scalar(n, vals[n], step)
     if step % args.gen_images_period == 0:
       _gen_sample_images(step, G)
     if args.outdir:
       if step % args.save_period == 0:
-        _save_weights(step, G, D)
+        _save_weights("%07d" % step, G, D, optimizers)
       elif step % 1000 == 0:
-        _save_weights("latest", G, D)
+        _save_weights("latest", G, D, optimizers)
 
-  def on_epoch_end(epoch, G, D):
+  def on_epoch_end(epoch, G, D, optimizers):
     print "Epoch ended: %d" % epoch
 
   def on_val_end(step, accuracy):
@@ -102,9 +123,9 @@ def _main():
                   on_epoch_end=on_epoch_end,
                   on_val_end=on_val_end,
                   on_train_begin=on_train_begin)
-    G, D, = train_gan(args, train_data, val_dataset, callbacks)
+    G, D, optimizers = train_gan(args, train_data, val_dataset, callbacks)
     if args.outdir:
-      _save_weights("final", G, D)
+      _save_weights("final", G, D, optimizers)
 
   writer.close()
 
