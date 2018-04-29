@@ -30,6 +30,8 @@ def _main():
   parser.add_argument("--gen_images_period", type=int, default=2500)
   parser.add_argument("--model_switch_period", type=int, default=25000)
   parser.add_argument("--save_period", type=int, default=50000)
+  parser.add_argument("--D_weights")
+  parser.add_argument("--G_weights")
   parser.add_argument("--gpu", action="store_true", default=False)
   args = parser.parse_args()
   print "Model params:"
@@ -68,6 +70,16 @@ def _main():
     torch.save(D.state_dict(), os.path.join(weight_path, "%s.d.pt" % str(step)))
     print "Model weights saved!"
 
+  def on_train_begin(G, D):
+    if args.D_weights:
+      d_weights = torch.load(args.D_weights)
+      D.load_state_dict(d_weights)
+      print "Loaded D initial weights from %s" % args.D_weights
+    if args.G_weights:
+      g_weights = torch.load(args.G_weights)
+      G.load_state_dict(g_weights)
+      print "Loaded G initial weights from %s" % args.G_weights
+
   def on_step_end(step, G, D, vals):
     for n in vals:
       writer.add_scalar(n, vals[n], step)
@@ -76,7 +88,7 @@ def _main():
     if args.outdir:
       if step % args.save_period == 0:
         _save_weights(step, G, D)
-      elif step % math.ceil(args.save_period / 10) == 0:
+      elif step % 1000 == 0:
         _save_weights("latest", G, D)
 
   def on_epoch_end(epoch, G, D):
@@ -86,7 +98,10 @@ def _main():
     writer.add_scalar("val_accuracy", accuracy, step)
 
   with misc.gpu_flag(args.gpu):
-    callbacks = m(on_step_end=on_step_end, on_epoch_end=on_epoch_end, on_val_end=on_val_end)
+    callbacks = m(on_step_end=on_step_end,
+                  on_epoch_end=on_epoch_end,
+                  on_val_end=on_val_end,
+                  on_train_begin=on_train_begin)
     G, D, = train_gan(args, train_data, val_dataset, callbacks)
     if args.outdir:
       _save_weights("final", G, D)

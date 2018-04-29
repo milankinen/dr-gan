@@ -133,6 +133,7 @@ def train_gan(args, train_data, val_dataset, callbacks):
     acc = np.mean([1. - d for d in dist_same] + dist_not_same)
     callbacks.on_val_end(step, acc)
 
+  callbacks.on_train_begin(G, D)
   step, d_overpower = 0, False
   for epoch in xrange(1, args.epochs + 1):
     epoch_data = DataLoader(train_data.get_ds(shuffle=True), batch_size=args.batch_size, shuffle=False, num_workers=1)
